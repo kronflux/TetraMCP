@@ -1,0 +1,392 @@
+/* ###
+ * IP: GHIDRA
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ##
+ */
+
+// TetraMCP for Ghidra - Unified Model Context Protocol server for Ghidra
+
+defaultTasks 'buildExtension'
+apply plugin: 'java-library'
+
+//------------------------------------------------------------------------------
+// Ghidra install directory resolution
+//------------------------------------------------------------------------------
+
+def ghidraInstallDir
+
+if (System.env.GHIDRA_INSTALL_DIR) {
+    ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
+}
+else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
+    ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
+}
+else {
+    throw new GradleException(
+        "GHIDRA_INSTALL_DIR is not set. Set it as an environment variable " +
+        "or in gradle.properties (e.g., GHIDRA_INSTALL_DIR=/opt/ghidra)")
+}
+
+apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+
+//------------------------------------------------------------------------------
+// Java configuration
+//------------------------------------------------------------------------------
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+compileJava {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+}
+
+//------------------------------------------------------------------------------
+// Repositories
+//------------------------------------------------------------------------------
+
+repositories {
+    mavenCentral()
+}
+
+//------------------------------------------------------------------------------
+// Dependencies
+//------------------------------------------------------------------------------
+
+configurations {
+    all {
+        // Exclude Jackson 3.x (pulled by mcp-json-jackson3 transitive)
+        exclude group: 'tools.jackson.core'
+        exclude group: 'io.modelcontextprotocol.sdk', module: 'mcp-json-jackson3'
+
+        // Exclude SLF4J - Ghidra provides its own version (1.7.x).
+        // Bundling 2.x causes classloader corruption on shutdown.
+        exclude group: 'org.slf4j'
+
+        // Exclude transitive deps we don't need
+        exclude group: 'org.yaml', module: 'snakeyaml'
+        exclude group: 'com.fasterxml.jackson.dataformat', module: 'jackson-dataformat-yaml'
+
+        resolutionStrategy {
+            // Force consistent Jackson 2.x versions
+            force "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}"
+            force "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+            force "com.fasterxml.jackson.core:jackson-annotations:${jacksonAnnotationsVersion}"
+        }
+    }
+}
+
+dependencies {
+    // MCP Java SDK (BOM for version management)
+    implementation platform("io.modelcontextprotocol.sdk:mcp-bom:${mcpSdkVersion}")
+    implementation "io.modelcontextprotocol.sdk:mcp-core"
+    implementation("io.modelcontextprotocol.sdk:mcp") {
+        // We use jackson2, not jackson3
+        exclude group: 'io.modelcontextprotocol.sdk', module: 'mcp-json-jackson3'
+    }
+    implementation "io.modelcontextprotocol.sdk:mcp-json-jackson2"
+
+    // Jetty 12 (embedded HTTP server for Streamable HTTP transport)
+    implementation "org.eclipse.jetty:jetty-server:${jettyVersion}"
+    implementation "org.eclipse.jetty.ee10:jetty-ee10-servlet:${jettyVersion}"
+
+    // Jakarta Servlet API (required by MCP SDK's HttpServletStreamableServerTransportProvider)
+    implementation "jakarta.servlet:jakarta.servlet-api:6.1.0"
+
+    // Jackson 2.x (JSON serialization)
+    implementation "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-annotations:${jacksonAnnotationsVersion}"
+
+    // Reactor (required by MCP SDK for async operations)
+    implementation "io.projectreactor:reactor-core:3.7.6"
+
+    // Testing
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.mockito:mockito-core:5.14.2"
+    testImplementation "org.hamcrest:hamcrest:3.0"
+}
+
+sourceSets {
+    test {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+    integrationTest {
+        java {
+            srcDirs = ['src/test.slow/java']
+        }
+        resources {
+            srcDirs = ['src/test.slow/resources']
+        }
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output + sourceSets.test.output
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+}
+
+// Ghidra 12.1+ installs a global deserialization filter factory during
+// ApplicationConfiguration init. Java allows setSerialFilterFactory() only
+// once, and Gradle test workers deserialize over their daemon socket first —
+// locking the factory and causing "Cannot replace filter factory". Specifying
+// it at JVM startup lets Ghidra reuse it. The class only exists on 12.1+.
+def ghidraSupportsSerialFilterFactory = {
+    def propsFile = new File(ghidraInstallDir, "Ghidra/application.properties")
+    if (!propsFile.exists()) {
+        return false
+    }
+    def props = new Properties()
+    propsFile.withInputStream { props.load(it) }
+    def parts = (props.getProperty("application.version", "0") =~ /\d+/).collect { it as int }
+    def major = parts.size() > 0 ? parts[0] : 0
+    def minor = parts.size() > 1 ? parts[1] : 0
+    return major > 12 || (major == 12 && minor >= 1)
+}()
+
+test {
+    if (ghidraSupportsSerialFilterFactory) {
+        jvmArgs '-Djdk.serialFilterFactory=ghidra.framework.remote.GhidraSerialFilterFactory'
+    }
+    testLogging {
+        events = ['failed', 'standardError']
+        exceptionFormat = 'full'
+        showStackTraces = true
+        showCauses = true
+    }
+}
+
+task integrationTest(type: Test) {
+    group = 'verification'
+    description = 'Runs integration tests against a real Ghidra installation'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+
+    // Fork every test class to prevent Ghidra Application init conflicts
+    forkEvery = 1
+    systemProperty 'java.awt.headless', 'false'
+
+    if (ghidraSupportsSerialFilterFactory) {
+        jvmArgs '-Djdk.serialFilterFactory=ghidra.framework.remote.GhidraSerialFilterFactory'
+    }
+
+    exclude '**/*Suite*'
+
+    testLogging {
+        events = ['failed', 'standardError']
+        exceptionFormat = 'full'
+        showStackTraces = true
+        showCauses = true
+    }
+}
+
+check.dependsOn integrationTest
+
+//------------------------------------------------------------------------------
+// Install task - deploy extension to Ghidra
+//------------------------------------------------------------------------------
+
+task install(type: Copy) {
+    group = "Ghidra"
+    description = "Install extension into Ghidra installation"
+
+    dependsOn buildExtension
+
+    // Resolve the zip lazily. The previous implementation called
+    // file("dist").listFiles() at configuration time, which picked a stale zip
+    // and found nothing at all on a clean checkout.
+    from { zipTree(buildExtension.archiveFile) }
+    into new File(ghidraInstallDir, "Ghidra/Extensions")
+}
+
+//------------------------------------------------------------------------------
+// Packaging hygiene
+//------------------------------------------------------------------------------
+// Ghidra's buildExtension copies the entire module directory into the release
+// zip. Exclude repo-only material so the published extension contains just the
+// runtime artifacts (lib jars, Module.manifest, extension.properties, README,
+// LICENSE, logo) and not test fixtures, CI config, docs, or VCS metadata.
+def ALLOWED_ROOT_FILES = [
+    'extension.properties', 'Module.manifest', 'LICENSE', 'README.md', 'logo.png'
+] as Set
+
+// The one root-level directory buildExtension is expected to ship: local
+// runtime dependency jars staged here by Ghidra's own `copyDependencies`
+// task (support/buildExtension.gradle), swept up wholesale by the
+// `from(project.projectDir) {...}` copy inside buildExtension. Every other
+// root-level directory (build, dist, .git, .github, docs, gradle,
+// test-fixtures, src, .gradle) is already excluded by name/pattern above.
+def ALLOWED_ROOT_DIRS = ['lib'] as Set
+
+// copyDependencies copies the resolved dependency jars into lib/ and removes
+// nothing, so a jar whose version no longer resolves stays there - on the
+// compile classpath, where it can shadow the version that does resolve, and in
+// the extension zip, which then ships both. Clearing the staged jars whenever
+// the task runs makes lib/ describe what resolves now rather than everything
+// that ever resolved.
+tasks.matching { it.name == 'copyDependencies' }.configureEach {
+    doFirst {
+        delete fileTree(dir: 'lib', include: '*.jar')
+    }
+}
+
+def MODULE_ROOT = project.projectDir.canonicalFile
+
+buildExtension {
+    exclude 'test-fixtures/**'
+    exclude 'src/test.slow/**'
+    exclude '.github/**'
+    exclude 'docs/**'
+    exclude '.git/**'
+    exclude '.gitignore'
+    exclude '.gitattributes'
+    exclude 'gradle/**'
+    exclude 'gradle.properties'
+    // Defensive: never package a Ghidra install that CI may place in the tree.
+    exclude 'ghidra_install/**'
+    exclude 'ghidra_*/**'
+    exclude 'ghidra.zip'
+
+    // Allow-list root-level files/dirs. buildExtension copies the whole
+    // module directory via `from(project.projectDir) {...}`, PLUS a few
+    // single-file specs (this module's compiled jar, its source zip)
+    // relocated into lib/ by `into "${pathInZip}/lib"`. Gradle reports the
+    // relativePath of those relocated files as just their own basename -- a
+    // single path segment, indistinguishable BY PATH ALONE from a genuine
+    // root file. Path-based filtering (`!p.contains('/')`) therefore
+    // misclassifies the relocated module jar/src-zip as stray root files
+    // and silently strips them (caught in review: the shipped extension had
+    // no application code).
+    //
+    // Discriminate on the copied entry's actual location on disk instead:
+    // a genuine root file/dir lives directly inside the module directory;
+    // a relocated single-file spec's source lives under build/ (e.g.
+    // build/libs/tetramcp.jar, build/tmp/src/tetramcp-src.zip). Only
+    // entries whose source parent IS the module root are candidates for
+    // exclusion.
+    //
+    // Known assumption: this relies on nothing being copied INTO the zip
+    // root from a non-root source. Ghidra's buildExtension.gradle also has
+    // a "GLOBALS" mechanism that copies each file under src/global/ to the
+    // zip root, stripping the src/global/ prefix -- such a file's source
+    // parent is src/global/, not MODULE_ROOT, so it would bypass this
+    // predicate. Not currently reachable (no src/global/ in this repo);
+    // verifyPackaging's root-entry check is the backstop if it ever gains
+    // content and collides with an unlisted name.
+    exclude { details ->
+        def sourceParent = details.file.parentFile?.canonicalFile
+        if (sourceParent != MODULE_ROOT) {
+            return false // relocated single-file spec (or nested content) - leave it alone
+        }
+        details.directory ? !ALLOWED_ROOT_DIRS.contains(details.name)
+                           : !ALLOWED_ROOT_FILES.contains(details.name)
+    }
+}
+
+//------------------------------------------------------------------------------
+// Packaging regression test
+//------------------------------------------------------------------------------
+task verifyPackaging {
+    group = 'verification'
+    description = 'Asserts the built extension zip has the expected root entries and required lib/ artifacts'
+    dependsOn buildExtension
+
+    doLast {
+        def zip = buildExtension.archiveFile.get().asFile
+        def rootEntries = []  // immediate children of tetramcp/ (files and dirs)
+        def libEntries = []   // immediate children of tetramcp/lib/ (files only)
+        new java.util.zip.ZipFile(zip).withCloseable { zf ->
+            zf.entries().each { e ->
+                // Strip the trailing '/' Gradle's Zip task writes for directory entries
+                // so "tetramcp/lib/" and "tetramcp/lib/foo.jar" split consistently.
+                def name = e.directory ? e.name[0..-2] : e.name
+                def parts = name.split('/')
+                if (parts.length < 2) return // the bare "tetramcp" entry itself
+                if (parts.length == 2) {
+                    rootEntries << parts[1]
+                } else if (parts.length == 3 && parts[1] == 'lib' && !e.directory) {
+                    libEntries << parts[2]
+                }
+            }
+        }
+
+        // 1. No unexpected root-level files or directories.
+        def unexpectedRoot = rootEntries.toSet() - ALLOWED_ROOT_FILES - ALLOWED_ROOT_DIRS
+        if (!unexpectedRoot.isEmpty()) {
+            throw new GradleException(
+                "Extension zip contains unexpected root-level entries: ${unexpectedRoot.sort()}. " +
+                "Add them to ALLOWED_ROOT_FILES/ALLOWED_ROOT_DIRS if intended, or exclude them in buildExtension.")
+        }
+
+        // 2. Required lib/ artifacts are present. This is the primary regression check:
+        // buildExtension.gradle relocates this module's own jar and source zip into lib/
+        // via single-file specs, which the root-file allow-list predicate above must not
+        // strip. Names are derived from the actual tasks, never hardcoded.
+        def moduleJarName = project.jar.archiveFileName.get()
+        def moduleSrcZipName = zipSource.archiveFileName.get()
+        def missingRequired = [moduleJarName, moduleSrcZipName].findAll { !libEntries.contains(it) }
+        if (!missingRequired.isEmpty()) {
+            throw new GradleException(
+                "Extension zip is missing required lib/ artifacts: ${missingRequired.sort()}. " +
+                "Found lib/ entries: ${libEntries.sort()}")
+        }
+
+        // 3. The module jar entry is non-empty (present-but-truncated would pass check #2).
+        def moduleJarSize
+        new java.util.zip.ZipFile(zip).withCloseable { zf ->
+            moduleJarSize = zf.getEntry("${project.name}/lib/${moduleJarName}").size
+        }
+        if (moduleJarSize <= 0) {
+            throw new GradleException(
+                "lib/${moduleJarName} is present in the extension zip but empty (size=${moduleJarSize}).")
+        }
+
+        // 4. Third-party lib/ jars survive packaging unchanged: every jar Gradle staged in
+        // the local lib/ dir (via copyDependencies) must appear in the zip's lib/ too.
+        // Compared by name set against the actual local dir, not a hardcoded count, so
+        // legitimate dependency changes don't require touching this task.
+        def localLibJars = fileTree(dir: 'lib', include: '*.jar').files*.name as Set
+        def zipThirdPartyJars = (libEntries as Set) - [moduleJarName, moduleSrcZipName]
+        def missingThirdParty = localLibJars - zipThirdPartyJars
+        if (!missingThirdParty.isEmpty()) {
+            throw new GradleException(
+                "Extension zip is missing third-party lib/ jars present locally: ${missingThirdParty.sort()} " +
+                "(local lib/ has ${localLibJars.size()} jars, zip lib/ has ${zipThirdPartyJars.size()} third-party jars).")
+        }
+
+        // 5. No artifact appears at two versions. Check 4 only asks whether a local
+        // jar reached the zip, so a stale jar left beside its replacement satisfies it
+        // and ships. Two versions of one library on the classpath resolve to whichever
+        // comes first, which is not a choice anyone made.
+        def byArtifact = localLibJars.groupBy { it.replaceFirst(/-\d[\w.\-]*\.jar$/, '') }
+        def duplicated = byArtifact.findAll { artifact, jars -> jars.size() > 1 }
+        if (!duplicated.isEmpty()) {
+            throw new GradleException(
+                "lib/ holds more than one version of: " +
+                duplicated.collect { artifact, jars -> "${artifact} (${jars.sort()})" }.sort().join(', ') +
+                ". Whichever the classpath reaches first wins, and the extension zip ships both. " +
+                "Run copyDependencies to restage lib/ from what currently resolves.")
+        }
+
+        logger.lifecycle("verifyPackaging: root entries OK (${rootEntries.toSet().sort()}); " +
+            "lib/${moduleJarName} present (${moduleJarSize} bytes); " +
+            "lib/${moduleSrcZipName} present; " +
+            "${zipThirdPartyJars.size()} third-party lib/ jars match local lib/ (${localLibJars.size()})")
+    }
+}
+
+check.dependsOn verifyPackaging

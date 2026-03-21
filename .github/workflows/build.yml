@@ -1,0 +1,144 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    # A release tag names the Ghidra version it is for, and that version is
+    # what gets built - see the "Ghidra version to build against" step.
+    tags: [ 'ghidra-*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Install xvfb
+      run: sudo apt-get update && sudo apt-get install -y xvfb
+
+    - name: Ghidra version to build against
+      id: target
+      run: |
+        # A ghidra-<version> tag names the version to build. Any other ref
+        # takes whatever Ghidra is latest, which is what a branch build wants.
+        if [[ "$GITHUB_REF" == refs/tags/ghidra-* ]]; then
+          echo "version=${GITHUB_REF_NAME#ghidra-}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup Ghidra
+      id: ghidra
+      uses: ./.github/actions/setup-ghidra
+      with:
+        version: ${{ steps.target.outputs.version }}
+
+    - name: Run unit tests
+      run: |
+        export GHIDRA_INSTALL_DIR="${{ steps.ghidra.outputs.install-dir }}"
+        chmod +x gradlew
+        ./gradlew test
+
+    - name: Run integration tests
+      run: |
+        export GHIDRA_INSTALL_DIR="${{ steps.ghidra.outputs.install-dir }}"
+        xvfb-run -a --server-args="-screen 0 1920x1080x24" ./gradlew integrationTest
+
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-reports
+        path: |
+          build/reports/tests/
+          build/test-results/
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Ghidra version to build against
+      id: target
+      run: |
+        # A ghidra-<version> tag names the version to build. Any other ref
+        # takes whatever Ghidra is latest, which is what a branch build wants.
+        if [[ "$GITHUB_REF" == refs/tags/ghidra-* ]]; then
+          echo "version=${GITHUB_REF_NAME#ghidra-}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup Ghidra
+      id: ghidra
+      uses: ./.github/actions/setup-ghidra
+      with:
+        version: ${{ steps.target.outputs.version }}
+
+    - name: Build extension
+      run: |
+        export GHIDRA_INSTALL_DIR="${{ steps.ghidra.outputs.install-dir }}"
+        chmod +x gradlew
+        ./gradlew buildExtension
+
+    - name: Prepare release artifact
+      id: artifact
+      run: |
+        GHIDRA_VER="${{ steps.ghidra.outputs.version }}"
+        ARTIFACT_NAME="TetraMCP-ghidra-${GHIDRA_VER}.zip"
+        cp dist/*.zip "dist/${ARTIFACT_NAME}"
+        cd dist
+        sha256sum "${ARTIFACT_NAME}" > "${ARTIFACT_NAME}.sha256"
+        cat "${ARTIFACT_NAME}.sha256"
+        echo "name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+        echo "ghidra_ver=${GHIDRA_VER}" >> $GITHUB_OUTPUT
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: |
+          dist/${{ steps.artifact.outputs.name }}
+          dist/${{ steps.artifact.outputs.name }}.sha256
+
+    - name: Create or update release
+      if: startsWith(github.ref, 'refs/tags/ghidra-')
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: TetraMCP for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}
+        body: |
+          TetraMCP extension built for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}.
+
+          Install via **File > Install Extensions** in Ghidra, then enable **TetraMcpPlugin** under **File > Configure > Developer**.
+
+          MCP endpoint: `http://localhost:18489/mcp`
+
+          **SHA256 checksum included** — verify with: `sha256sum -c TetraMCP-ghidra-${{ steps.artifact.outputs.ghidra_ver }}.zip.sha256`
+        # A rebuild for an older Ghidra must not displace the current release.
+        make_latest: ${{ steps.ghidra.outputs.is-latest }}
+        files: |
+          dist/${{ steps.artifact.outputs.name }}
+          dist/${{ steps.artifact.outputs.name }}.sha256
