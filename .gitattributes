@@ -1,0 +1,10 @@
+# Every text file is stored with Unix line ends whatever the checkout holds, so
+# an editor that rewrites line ends cannot restage the whole tree, and the
+# shebang of gradlew stays readable to the shell on the Linux runners.
+* text=auto eol=lf
+
+# The Windows launcher is the one script that needs Windows line ends.
+gradlew.bat text eol=crlf
+
+*.jar binary
+*.png binary
