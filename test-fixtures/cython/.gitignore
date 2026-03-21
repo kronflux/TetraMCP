@@ -1,0 +1,6 @@
+# Build artifacts (regenerate with setup.py / cython)
+*.so
+*.c
+*.html
+build/
+__pycache__/

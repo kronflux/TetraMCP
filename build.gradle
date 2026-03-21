@@ -1,0 +1,165 @@
+/* ###
+ * IP: GHIDRA
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ##
+ */
+
+// TetraMCP for Ghidra - Unified Model Context Protocol server for Ghidra
+
+defaultTasks 'buildExtension'
+apply plugin: 'java-library'
+
+//------------------------------------------------------------------------------
+// Ghidra install directory resolution
+//------------------------------------------------------------------------------
+
+def ghidraInstallDir
+
+if (System.env.GHIDRA_INSTALL_DIR) {
+    ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
+}
+else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
+    ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
+}
+else {
+    throw new GradleException(
+        "GHIDRA_INSTALL_DIR is not set. Set it as an environment variable " +
+        "or in gradle.properties (e.g., GHIDRA_INSTALL_DIR=/opt/ghidra)")
+}
+
+apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+
+//------------------------------------------------------------------------------
+// Java configuration
+//------------------------------------------------------------------------------
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+compileJava {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+}
+
+//------------------------------------------------------------------------------
+// Repositories
+//------------------------------------------------------------------------------
+
+repositories {
+    mavenCentral()
+}
+
+//------------------------------------------------------------------------------
+// Dependencies
+//------------------------------------------------------------------------------
+
+configurations {
+    all {
+        // Exclude Jackson 3.x (pulled by mcp-json-jackson3 transitive)
+        exclude group: 'tools.jackson.core'
+        exclude group: 'io.modelcontextprotocol.sdk', module: 'mcp-json-jackson3'
+
+        // Exclude SLF4J - Ghidra provides its own version (1.7.x).
+        // Bundling 2.x causes classloader corruption on shutdown.
+        exclude group: 'org.slf4j'
+
+        // Exclude transitive deps we don't need
+        exclude group: 'org.yaml', module: 'snakeyaml'
+        exclude group: 'com.fasterxml.jackson.dataformat', module: 'jackson-dataformat-yaml'
+
+        resolutionStrategy {
+            // Force consistent Jackson 2.x versions
+            force "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}"
+            force "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+            force "com.fasterxml.jackson.core:jackson-annotations:${jacksonAnnotationsVersion}"
+        }
+    }
+}
+
+dependencies {
+    // MCP Java SDK (BOM for version management)
+    implementation platform("io.modelcontextprotocol.sdk:mcp-bom:${mcpSdkVersion}")
+    implementation "io.modelcontextprotocol.sdk:mcp-core"
+    implementation("io.modelcontextprotocol.sdk:mcp") {
+        // We use jackson2, not jackson3
+        exclude group: 'io.modelcontextprotocol.sdk', module: 'mcp-json-jackson3'
+    }
+    implementation "io.modelcontextprotocol.sdk:mcp-json-jackson2"
+
+    // Jetty 12 (embedded HTTP server for Streamable HTTP transport)
+    implementation "org.eclipse.jetty:jetty-server:${jettyVersion}"
+    implementation "org.eclipse.jetty.ee10:jetty-ee10-servlet:${jettyVersion}"
+
+    // Jakarta Servlet API (required by MCP SDK's HttpServletStreamableServerTransportProvider)
+    implementation "jakarta.servlet:jakarta.servlet-api:6.1.0"
+
+    // Jackson 2.x (JSON serialization)
+    implementation "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-annotations:${jacksonAnnotationsVersion}"
+
+    // Reactor (required by MCP SDK for async operations)
+    implementation "io.projectreactor:reactor-core:3.7.6"
+
+    // Testing
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.mockito:mockito-core:5.14.2"
+}
+
+sourceSets {
+    test {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
+//------------------------------------------------------------------------------
+// Install task - deploy extension to Ghidra
+//------------------------------------------------------------------------------
+
+task install(type: Copy) {
+    group = "Ghidra"
+    description = "Install extension into Ghidra installation"
+
+    def zipFile = file("dist").listFiles()?.find { it.name.endsWith('.zip') }
+    if (zipFile != null) {
+        from zipTree(zipFile)
+        into new File(ghidraInstallDir, "Ghidra/Extensions")
+    }
+
+    dependsOn buildExtension
+}
+
+//------------------------------------------------------------------------------
+// Packaging hygiene
+//------------------------------------------------------------------------------
+// Ghidra's buildExtension copies the entire module directory into the release
+// zip. Exclude repo-only material so the published extension contains just the
+// runtime artifacts (lib jars, Module.manifest, extension.properties, README,
+// LICENSE, logo) and not test fixtures, CI config, docs, or VCS metadata.
+buildExtension {
+    exclude 'test-fixtures/**'
+    exclude '.github/**'
+    exclude 'docs/**'
+    exclude '.git/**'
+    exclude '.gitignore'
+    exclude '.gitattributes'
+    exclude 'gradle/**'
+    exclude 'gradle.properties'
+    // Defensive: never package a Ghidra install that CI may place in the tree.
+    exclude 'ghidra_install/**'
+    exclude 'ghidra_*/**'
+    exclude 'ghidra.zip'
+}
