@@ -23,6 +23,8 @@ import com.tetramcp.tools.AbstractToolProvider;
 import com.tetramcp.tools.ToolSpecification;
 import com.tetramcp.prompts.PromptProvider;
 import com.tetramcp.resources.ResourceProvider;
+import com.tetramcp.tools.project.InstanceToolProvider;
+import com.tetramcp.tools.project.ProjectToolProvider;
 
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -947,6 +949,10 @@ public class McpServerManager {
      */
     private void initializeToolProviders() {
         toolProviders.clear();
+
+        // Program/project info & instance management
+        toolProviders.add(new ProjectToolProvider(this));
+        toolProviders.add(new InstanceToolProvider(this));
     }
 
     // --- Program state management ---
