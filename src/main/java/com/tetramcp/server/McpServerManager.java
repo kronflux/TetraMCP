@@ -23,8 +23,19 @@ import com.tetramcp.tools.AbstractToolProvider;
 import com.tetramcp.tools.ToolSpecification;
 import com.tetramcp.prompts.PromptProvider;
 import com.tetramcp.resources.ResourceProvider;
+import com.tetramcp.tools.analysis.AnalysisToolProvider;
+import com.tetramcp.tools.bookmarks.BookmarkToolProvider;
+import com.tetramcp.tools.comments.CommentToolProvider;
+import com.tetramcp.tools.data.DataToolProvider;
+import com.tetramcp.tools.datatypes.DataTypeToolProvider;
+import com.tetramcp.tools.functions.FunctionToolProvider;
+import com.tetramcp.tools.memory.MemoryToolProvider;
 import com.tetramcp.tools.project.InstanceToolProvider;
 import com.tetramcp.tools.project.ProjectToolProvider;
+import com.tetramcp.tools.structs.StructToolProvider;
+import com.tetramcp.tools.symbols.SymbolToolProvider;
+import com.tetramcp.tools.variables.VariableToolProvider;
+import com.tetramcp.tools.xrefs.XrefToolProvider;
 
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -953,6 +964,19 @@ public class McpServerManager {
         // Program/project info & instance management
         toolProviders.add(new ProjectToolProvider(this));
         toolProviders.add(new InstanceToolProvider(this));
+
+        // Core analysis
+        toolProviders.add(new FunctionToolProvider(this));
+        toolProviders.add(new SymbolToolProvider(this));
+        toolProviders.add(new DataToolProvider(this));
+        toolProviders.add(new MemoryToolProvider(this));
+        toolProviders.add(new XrefToolProvider(this));
+        toolProviders.add(new CommentToolProvider(this));
+        toolProviders.add(new DataTypeToolProvider(this));
+        toolProviders.add(new AnalysisToolProvider(this));
+        toolProviders.add(new StructToolProvider(this));
+        toolProviders.add(new VariableToolProvider(this));
+        toolProviders.add(new BookmarkToolProvider(this));
     }
 
     // --- Program state management ---
