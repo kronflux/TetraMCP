@@ -23,7 +23,11 @@ import com.tetramcp.tools.AbstractToolProvider;
 import com.tetramcp.tools.ToolSpecification;
 import com.tetramcp.prompts.PromptProvider;
 import com.tetramcp.resources.ResourceProvider;
+import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
+import com.tetramcp.tools.analysis.LogBasedRenameProvider;
+import com.tetramcp.tools.analysis.PythonBinaryAnalysisProvider;
+import com.tetramcp.tools.batch.BatchToolProvider;
 import com.tetramcp.tools.bookmarks.BookmarkToolProvider;
 import com.tetramcp.tools.comments.CommentToolProvider;
 import com.tetramcp.tools.data.DataToolProvider;
@@ -32,6 +36,7 @@ import com.tetramcp.tools.functions.FunctionToolProvider;
 import com.tetramcp.tools.memory.MemoryToolProvider;
 import com.tetramcp.tools.project.InstanceToolProvider;
 import com.tetramcp.tools.project.ProjectToolProvider;
+import com.tetramcp.tools.project.UiToolProvider;
 import com.tetramcp.tools.structs.StructToolProvider;
 import com.tetramcp.tools.symbols.SymbolToolProvider;
 import com.tetramcp.tools.variables.VariableToolProvider;
@@ -977,6 +982,13 @@ public class McpServerManager {
         toolProviders.add(new StructToolProvider(this));
         toolProviders.add(new VariableToolProvider(this));
         toolProviders.add(new BookmarkToolProvider(this));
+
+        // Tier 2: Advanced analysis, batch ops, UI
+        toolProviders.add(new AdvancedAnalysisToolProvider(this));
+        toolProviders.add(new LogBasedRenameProvider(this));
+        toolProviders.add(new PythonBinaryAnalysisProvider(this));
+        toolProviders.add(new BatchToolProvider(this));
+        toolProviders.add(new UiToolProvider(this));
     }
 
     // --- Program state management ---
