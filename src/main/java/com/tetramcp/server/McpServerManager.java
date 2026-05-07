@@ -32,11 +32,15 @@ import com.tetramcp.tools.bookmarks.BookmarkToolProvider;
 import com.tetramcp.tools.comments.CommentToolProvider;
 import com.tetramcp.tools.data.DataToolProvider;
 import com.tetramcp.tools.datatypes.DataTypeToolProvider;
+import com.tetramcp.tools.decompiler.ConstantsToolProvider;
+import com.tetramcp.tools.decompiler.DiffToolProvider;
+import com.tetramcp.tools.emulation.EmulationToolProvider;
 import com.tetramcp.tools.functions.FunctionToolProvider;
 import com.tetramcp.tools.memory.MemoryToolProvider;
 import com.tetramcp.tools.project.InstanceToolProvider;
 import com.tetramcp.tools.project.ProjectToolProvider;
 import com.tetramcp.tools.project.UiToolProvider;
+import com.tetramcp.tools.scripts.ScriptToolProvider;
 import com.tetramcp.tools.structs.StructToolProvider;
 import com.tetramcp.tools.symbols.SymbolToolProvider;
 import com.tetramcp.tools.variables.VariableToolProvider;
@@ -989,6 +993,12 @@ public class McpServerManager {
         toolProviders.add(new PythonBinaryAnalysisProvider(this));
         toolProviders.add(new BatchToolProvider(this));
         toolProviders.add(new UiToolProvider(this));
+
+        // Tier 3: Emulation, scripts, diffing, constants
+        toolProviders.add(new EmulationToolProvider(this));
+        toolProviders.add(new ScriptToolProvider(this));
+        toolProviders.add(new DiffToolProvider(this));
+        toolProviders.add(new ConstantsToolProvider(this));
     }
 
     // --- Program state management ---
