@@ -23,6 +23,7 @@ import com.tetramcp.tools.AbstractToolProvider;
 import com.tetramcp.tools.ToolSpecification;
 import com.tetramcp.prompts.PromptProvider;
 import com.tetramcp.resources.ResourceProvider;
+import com.tetramcp.tools.ai.AiAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
 import com.tetramcp.tools.analysis.LogBasedRenameProvider;
@@ -999,6 +1000,9 @@ public class McpServerManager {
         toolProviders.add(new ScriptToolProvider(this));
         toolProviders.add(new DiffToolProvider(this));
         toolProviders.add(new ConstantsToolProvider(this));
+
+        // AI-enhanced analysis
+        toolProviders.add(new AiAnalysisToolProvider(this));
     }
 
     // --- Program state management ---
