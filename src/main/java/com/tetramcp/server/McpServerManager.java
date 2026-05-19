@@ -28,6 +28,7 @@ import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
 import com.tetramcp.tools.analysis.LogBasedRenameProvider;
 import com.tetramcp.tools.analysis.PythonBinaryAnalysisProvider;
+import com.tetramcp.tools.crypto.CryptoToolProvider;
 import com.tetramcp.tools.batch.BatchToolProvider;
 import com.tetramcp.tools.bookmarks.BookmarkToolProvider;
 import com.tetramcp.tools.comments.CommentToolProvider;
@@ -1003,6 +1004,9 @@ public class McpServerManager {
 
         // AI-enhanced analysis
         toolProviders.add(new AiAnalysisToolProvider(this));
+
+        // Crypto detection
+        toolProviders.add(new CryptoToolProvider(this));
     }
 
     // --- Program state management ---
