@@ -26,6 +26,8 @@ import com.tetramcp.resources.ResourceProvider;
 import com.tetramcp.tools.ai.AiAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
+import com.tetramcp.tools.analysis.ExternalAnalysisProvider;
+import com.tetramcp.tools.analysis.ExternalToolsProvider;
 import com.tetramcp.tools.analysis.LogBasedRenameProvider;
 import com.tetramcp.tools.analysis.PythonBinaryAnalysisProvider;
 import com.tetramcp.tools.crypto.CryptoToolProvider;
@@ -1007,6 +1009,12 @@ public class McpServerManager {
 
         // Crypto detection
         toolProviders.add(new CryptoToolProvider(this));
+
+        // External tools (binwalk, YARA, Go renamer)
+        toolProviders.add(new ExternalToolsProvider(this));
+
+        // External analysis utilities (strings, file)
+        toolProviders.add(new ExternalAnalysisProvider(this));
     }
 
     // --- Program state management ---
