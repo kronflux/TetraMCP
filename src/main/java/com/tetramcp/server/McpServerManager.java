@@ -23,6 +23,7 @@ import com.tetramcp.tools.AbstractToolProvider;
 import com.tetramcp.tools.ToolSpecification;
 import com.tetramcp.prompts.PromptProvider;
 import com.tetramcp.resources.ResourceProvider;
+import com.tetramcp.tools.agents.AgentToolProvider;
 import com.tetramcp.tools.ai.AiAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
@@ -1015,6 +1016,9 @@ public class McpServerManager {
 
         // External analysis utilities (strings, file)
         toolProviders.add(new ExternalAnalysisProvider(this));
+
+        // Multi-agent collaboration
+        toolProviders.add(new AgentToolProvider(this));
     }
 
     // --- Program state management ---
