@@ -48,6 +48,7 @@ import com.tetramcp.tools.project.UiToolProvider;
 import com.tetramcp.tools.scripts.ScriptToolProvider;
 import com.tetramcp.tools.structs.StructToolProvider;
 import com.tetramcp.tools.symbols.SymbolToolProvider;
+import com.tetramcp.tools.cython.CythonToolProvider;
 import com.tetramcp.tools.variables.VariableToolProvider;
 import com.tetramcp.tools.xrefs.XrefToolProvider;
 
@@ -1019,6 +1020,9 @@ public class McpServerManager {
 
         // Multi-agent collaboration
         toolProviders.add(new AgentToolProvider(this));
+
+        // Cython/CPython recovery
+        toolProviders.add(new CythonToolProvider(this));
     }
 
     // --- Program state management ---
