@@ -29,6 +29,7 @@ import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
 import com.tetramcp.tools.analysis.ExternalAnalysisProvider;
 import com.tetramcp.tools.analysis.ExternalToolsProvider;
+import com.tetramcp.tools.analysis.FunctionIdToolProvider;
 import com.tetramcp.tools.analysis.LogBasedRenameProvider;
 import com.tetramcp.tools.analysis.PythonBinaryAnalysisProvider;
 import com.tetramcp.tools.crypto.CryptoToolProvider;
@@ -1023,6 +1024,9 @@ public class McpServerManager {
 
         // Cython/CPython recovery
         toolProviders.add(new CythonToolProvider(this));
+
+        // FunctionID library-function identification
+        toolProviders.add(new FunctionIdToolProvider(this));
     }
 
     // --- Program state management ---
