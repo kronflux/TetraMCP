@@ -27,6 +27,7 @@ import com.tetramcp.tools.agents.AgentToolProvider;
 import com.tetramcp.tools.ai.AiAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AdvancedAnalysisToolProvider;
 import com.tetramcp.tools.analysis.AnalysisToolProvider;
+import com.tetramcp.tools.analysis.ContextToolProvider;
 import com.tetramcp.tools.analysis.ExternalAnalysisProvider;
 import com.tetramcp.tools.analysis.ExternalToolsProvider;
 import com.tetramcp.tools.analysis.FunctionIdToolProvider;
@@ -1027,6 +1028,9 @@ public class McpServerManager {
 
         // FunctionID library-function identification
         toolProviders.add(new FunctionIdToolProvider(this));
+
+        // Function context bundle
+        toolProviders.add(new ContextToolProvider(this));
     }
 
     // --- Program state management ---
