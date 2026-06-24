@@ -51,6 +51,7 @@ import com.tetramcp.tools.scripts.ScriptToolProvider;
 import com.tetramcp.tools.structs.StructToolProvider;
 import com.tetramcp.tools.symbols.SymbolToolProvider;
 import com.tetramcp.tools.cython.CythonToolProvider;
+import com.tetramcp.tools.patching.AssemblerToolProvider;
 import com.tetramcp.tools.variables.VariableToolProvider;
 import com.tetramcp.tools.xrefs.XrefToolProvider;
 
@@ -1031,6 +1032,9 @@ public class McpServerManager {
 
         // Function context bundle
         toolProviders.add(new ContextToolProvider(this));
+
+        // Assembly / patching
+        toolProviders.add(new AssemblerToolProvider(this));
     }
 
     // --- Program state management ---
