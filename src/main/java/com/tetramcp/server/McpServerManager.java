@@ -30,6 +30,7 @@ import com.tetramcp.tools.analysis.AnalysisToolProvider;
 import com.tetramcp.tools.analysis.ContextToolProvider;
 import com.tetramcp.tools.analysis.ExternalAnalysisProvider;
 import com.tetramcp.tools.analysis.ExternalToolsProvider;
+import com.tetramcp.tools.analysis.CrossBinaryToolProvider;
 import com.tetramcp.tools.analysis.FunctionIdToolProvider;
 import com.tetramcp.tools.analysis.LogBasedRenameProvider;
 import com.tetramcp.tools.analysis.PythonBinaryAnalysisProvider;
@@ -1035,6 +1036,9 @@ public class McpServerManager {
 
         // Assembly / patching
         toolProviders.add(new AssemblerToolProvider(this));
+
+        // Cross-binary name transfer
+        toolProviders.add(new CrossBinaryToolProvider(this));
     }
 
     // --- Program state management ---
