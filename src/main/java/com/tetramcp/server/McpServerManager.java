@@ -44,6 +44,7 @@ import com.tetramcp.tools.decompiler.ConstantsToolProvider;
 import com.tetramcp.tools.decompiler.DiffToolProvider;
 import com.tetramcp.tools.emulation.EmulationToolProvider;
 import com.tetramcp.tools.functions.FunctionToolProvider;
+import com.tetramcp.tools.jobs.JobToolProvider;
 import com.tetramcp.tools.memory.MemoryToolProvider;
 import com.tetramcp.tools.project.InstanceToolProvider;
 import com.tetramcp.tools.project.ProjectToolProvider;
@@ -1039,6 +1040,9 @@ public class McpServerManager {
 
         // Cross-binary name transfer
         toolProviders.add(new CrossBinaryToolProvider(this));
+
+        // Background job observation and control
+        toolProviders.add(new JobToolProvider(this));
     }
 
     // --- Program state management ---
