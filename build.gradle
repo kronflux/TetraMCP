@@ -204,11 +204,11 @@ task install(type: Copy) {
     group = "Ghidra"
     description = "Install extension into Ghidra installation"
 
-    def zipFile = file("dist").listFiles()?.find { it.name.endsWith('.zip') }
-    if (zipFile != null) {
-        from zipTree(zipFile)
-        into new File(ghidraInstallDir, "Ghidra/Extensions")
-    }
-
     dependsOn buildExtension
+
+    // Resolve the zip lazily. The previous implementation called
+    // file("dist").listFiles() at configuration time, which picked a stale zip
+    // and found nothing at all on a clean checkout.
+    from { zipTree(buildExtension.archiveFile) }
+    into new File(ghidraInstallDir, "Ghidra/Extensions")
 }
