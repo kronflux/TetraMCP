@@ -1,0 +1,36 @@
+name: 'Setup Ghidra'
+description: 'Resolves and downloads the latest Ghidra release, outside the workspace'
+outputs:
+  version:
+    description: 'Resolved Ghidra version'
+    value: ${{ steps.resolve.outputs.version }}
+  install-dir:
+    description: 'Absolute path to the unpacked Ghidra install'
+    value: ${{ steps.resolve.outputs.install-dir }}
+runs:
+  using: 'composite'
+  steps:
+    - id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        RELEASE=$(curl -sSf https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest)
+        # Select by NAME PATTERN. The previous `.assets[0]` pick was index-based
+        # and silently grabbed whatever asset happened to sort first.
+        URL=$(echo "$RELEASE" | jq -r '.assets[] | select(.name | test("^ghidra_.*_PUBLIC_.*\\.zip$")) | .browser_download_url' | head -1)
+        VERSION=$(echo "$RELEASE" | jq -r .tag_name | sed 's/Ghidra_//; s/_build//')
+        if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+          echo "::error::No Ghidra PUBLIC zip asset found in the latest release"
+          echo "$RELEASE" | jq -r '.assets[].name'
+          exit 1
+        fi
+        echo "### Ghidra \`$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "Asset: \`$(basename "$URL")\`" >> "$GITHUB_STEP_SUMMARY"
+        # Unpack OUTSIDE the checkout: buildExtension copies the whole project
+        # dir, so a Ghidra install inside it would be packaged into the zip.
+        cd "$RUNNER_TEMP"
+        curl -Lo ghidra.zip "$URL"
+        unzip -q ghidra.zip
+        mv ghidra_* ghidra_install
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "install-dir=$RUNNER_TEMP/ghidra_install" >> "$GITHUB_OUTPUT"
