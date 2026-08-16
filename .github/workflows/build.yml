@@ -3,7 +3,9 @@ name: Build
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
+    # A release tag names the Ghidra version it is for, and that version is
+    # what gets built - see the "Ghidra version to build against" step.
+    tags: [ 'ghidra-*' ]
 
 permissions:
   contents: write
@@ -25,9 +27,22 @@ jobs:
     - name: Install xvfb
       run: sudo apt-get update && sudo apt-get install -y xvfb
 
+    - name: Ghidra version to build against
+      id: target
+      run: |
+        # A ghidra-<version> tag names the version to build. Any other ref
+        # takes whatever Ghidra is latest, which is what a branch build wants.
+        if [[ "$GITHUB_REF" == refs/tags/ghidra-* ]]; then
+          echo "version=${GITHUB_REF_NAME#ghidra-}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Setup Ghidra
       id: ghidra
       uses: ./.github/actions/setup-ghidra
+      with:
+        version: ${{ steps.target.outputs.version }}
 
     - name: Run unit tests
       run: |
@@ -65,9 +80,22 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
+    - name: Ghidra version to build against
+      id: target
+      run: |
+        # A ghidra-<version> tag names the version to build. Any other ref
+        # takes whatever Ghidra is latest, which is what a branch build wants.
+        if [[ "$GITHUB_REF" == refs/tags/ghidra-* ]]; then
+          echo "version=${GITHUB_REF_NAME#ghidra-}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Setup Ghidra
       id: ghidra
       uses: ./.github/actions/setup-ghidra
+      with:
+        version: ${{ steps.target.outputs.version }}
 
     - name: Build extension
       run: |
@@ -96,10 +124,10 @@ jobs:
           dist/${{ steps.artifact.outputs.name }}.sha256
 
     - name: Create or update release
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/ghidra-')
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ghidra-${{ steps.artifact.outputs.ghidra_ver }}
+        tag_name: ${{ github.ref_name }}
         name: TetraMCP for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}
         body: |
           TetraMCP extension built for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}.
@@ -109,7 +137,8 @@ jobs:
           MCP endpoint: `http://localhost:18489/mcp`
 
           **SHA256 checksum included** — verify with: `sha256sum -c TetraMCP-ghidra-${{ steps.artifact.outputs.ghidra_ver }}.zip.sha256`
-        make_latest: true
+        # A rebuild for an older Ghidra must not displace the current release.
+        make_latest: ${{ steps.ghidra.outputs.is-latest }}
         files: |
           dist/${{ steps.artifact.outputs.name }}
           dist/${{ steps.artifact.outputs.name }}.sha256
