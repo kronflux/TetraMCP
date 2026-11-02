@@ -156,19 +156,55 @@ jobs:
         git tag -f "$TAG"
         git push -f origin "refs/tags/$TAG"
 
+    # The notes carry the changelog section for the Ghidra version being built,
+    # so a release says what changed rather than only which Ghidra it targets.
+    # A version with no section yet releases with the installation notes alone
+    # and a warning, because a documentation gap is not a reason to withhold a
+    # build that passed.
+    - name: Assemble the release notes
+      env:
+        GHIDRA_VER: ${{ steps.artifact.outputs.ghidra_ver }}
+        ARTIFACT: ${{ steps.artifact.outputs.name }}
+      run: |
+        # The trailing space in the pattern keeps "12.1" from matching "12.1.2".
+        awk -v heading="## Ghidra ${GHIDRA_VER} " '
+          index($0, heading) == 1 { inside = 1; next }
+          inside && /^## / { exit }
+          inside { print }
+        ' CHANGELOG.md > changes.md
+        if [ ! -s changes.md ]; then
+          echo "::warning::CHANGELOG.md has no section for Ghidra ${GHIDRA_VER}"
+        fi
+        {
+          echo "TetraMCP extension built for Ghidra ${GHIDRA_VER}."
+          echo
+          if [ -s changes.md ]; then
+            echo "## Changes"
+            cat changes.md
+          else
+            echo "No changelog section records this version yet."
+            echo
+          fi
+          echo "## Install"
+          echo
+          echo "In Ghidra, select **File > Install Extensions**, add"
+          echo "\`${ARTIFACT}\`, restart, then enable **TetraMcpPlugin** under"
+          echo "**File > Configure > Developer**. The server listens on"
+          echo "\`http://localhost:18489/mcp\`."
+          echo
+          echo "Verify the download with \`sha256sum -c ${ARTIFACT}.sha256\`."
+          echo
+          echo "Ghidra ${GHIDRA_VER}'s own release notes are at"
+          echo "<https://github.com/NationalSecurityAgency/ghidra/releases/tag/Ghidra_${GHIDRA_VER}_build>."
+        } > release-notes.md
+        cat release-notes.md
+
     - name: Create or update release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ghidra-${{ steps.ghidra.outputs.version }}
         name: TetraMCP for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}
-        body: |
-          TetraMCP extension built for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}.
-
-          Install via **File > Install Extensions** in Ghidra, then enable **TetraMcpPlugin** under **File > Configure > Developer**.
-
-          MCP endpoint: `http://localhost:18489/mcp`
-
-          **SHA256 checksum included** — verify with: `sha256sum -c TetraMCP-ghidra-${{ steps.artifact.outputs.ghidra_ver }}.zip.sha256`
+        body_path: release-notes.md
         # A rebuild for an older Ghidra must not displace the current release.
         make_latest: ${{ steps.ghidra.outputs.is-latest }}
         files: |
