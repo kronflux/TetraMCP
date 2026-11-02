@@ -143,11 +143,23 @@ jobs:
           dist/${{ steps.artifact.outputs.name }}
           dist/${{ steps.artifact.outputs.name }}.sha256
 
+    # The release for a Ghidra version holds the newest build that succeeded for
+    # it, so the tag it is cut from moves to the commit that built and the tag,
+    # the release and the files it carries name the same source. On a tag push
+    # the tag already names this commit and the move changes nothing. The push
+    # uses GITHUB_TOKEN, whose ref updates start no workflow run, so tagging
+    # here does not trigger this workflow again.
+    - name: Point the Ghidra version tag at this commit
+      env:
+        TAG: ghidra-${{ steps.ghidra.outputs.version }}
+      run: |
+        git tag -f "$TAG"
+        git push -f origin "refs/tags/$TAG"
+
     - name: Create or update release
-      if: startsWith(github.ref, 'refs/tags/ghidra-')
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref_name }}
+        tag_name: ghidra-${{ steps.ghidra.outputs.version }}
         name: TetraMCP for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}
         body: |
           TetraMCP extension built for Ghidra ${{ steps.artifact.outputs.ghidra_ver }}.
