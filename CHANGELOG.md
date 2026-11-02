@@ -19,7 +19,8 @@ which requires Java 25.
   successful build, carrying the extension zip and its SHA-256 checksum. The
   `ghidra-<version>` tag moves to the commit that built it, so the tag, the
   release and its files name the same source.
-- Release notes are taken from this file, so a release says what changed.
+- Release notes are taken from this changelog, so a release says what changed
+  rather than only which Ghidra release it targets.
 
 ### Changed
 
