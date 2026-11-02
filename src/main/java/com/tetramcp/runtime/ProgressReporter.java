@@ -193,13 +193,6 @@ public final class ProgressReporter extends TaskMonitorAdapter {
         }
     }
 
-    /** The older spelling, which Ghidra code predating the rename still calls. */
-    @Deprecated
-    @Override
-    public void checkCanceled() throws CancelledException {
-        checkCancelled();
-    }
-
     @Override
     public void setMessage(String message) {
         this.message = message;

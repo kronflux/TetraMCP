@@ -20,6 +20,7 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
 
 import ghidra.feature.fid.db.FidFile;
 import ghidra.feature.fid.db.FidFileManager;
+import ghidra.feature.fid.db.FidProgramID;
 import ghidra.feature.fid.db.FidQueryService;
 import ghidra.feature.fid.db.FunctionRecord;
 import ghidra.feature.fid.service.FidMatch;
@@ -141,14 +142,19 @@ public class FunctionIdToolProvider extends AbstractToolProvider {
 
     private CallToolResult handleIdentify(Program program, float threshold, boolean apply, int limit) {
         FidService service = new FidService();
-        if (!service.canProcess(program.getLanguage())) {
+        // Ignoring compiler spec and source language leaves the language as the only
+        // filter a database has to match, which is the set of databases this tool
+        // queries. Honouring them would skip a database whose filters disagree with
+        // the program's compiler spec.
+        FidProgramID programID = new FidProgramID(program, true);
+        if (!service.canProcess(programID)) {
             throw new IllegalStateException(
                 "FunctionID cannot process language " + program.getLanguage().getLanguageID() +
                 ". No compatible .fidb / hashing for this architecture.");
         }
 
         List<FidSearchResult> results;
-        try (FidQueryService query = service.openFidQueryService(program.getLanguage(), false)) {
+        try (FidQueryService query = service.openFidQueryService(programID, false)) {
             results = service.processProgram(program, query, threshold,
                 ProgressReporter.current());
         }

@@ -58,7 +58,7 @@ TetraMCP provides a comprehensive set of reverse engineering capabilities organi
 
 ## Prerequisites
 -   [Ghidra](https://ghidra-sre.org/) (Version 12.0.4 or later)
--   JDK 21
+-   The JDK the Ghidra release requires: 21 for Ghidra 12.0.4 through 12.1.2, 25 for Ghidra 12.2
 
 ## Ghidra Plugin Installation
 
@@ -260,7 +260,14 @@ public class MyModule implements TetraMcpModule {
 
 # Building from Source
 
-**Requirements:** JDK 21, Ghidra 12.0.4 or later.
+**Requirements:** Ghidra 12.2 or later, and a JDK of the version that release
+names as `application.java.compiler` in `Ghidra/application.properties`, which is
+25 for Ghidra 12.2. The build compiles at that level and fails on an older JDK.
+
+The source calls the FunctionID and task monitor APIs as Ghidra 12.2 declares
+them, and those signatures differ in 12.1.2 and earlier. To build for an older
+Ghidra, check out the `ghidra-<version>` tag that names it, or take that
+version's release artifact.
 
 ```bash
 export GHIDRA_INSTALL_DIR=/path/to/ghidra

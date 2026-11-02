@@ -18,6 +18,22 @@ outputs:
   install-dir:
     description: 'Absolute path to the unpacked Ghidra install'
     value: ${{ steps.resolve.outputs.install-dir }}
+  java-version:
+    description: >
+      Java feature version this Ghidra release compiles extensions at, taken
+      from application.java.compiler. Set up a JDK of at least this version
+      before running Gradle.
+    value: ${{ steps.resolve.outputs.java-version }}
+  gradle-version:
+    description: >
+      Newest final Gradle release inside the range this Ghidra accepts, from
+      application.gradle.min and application.gradle.max.
+    value: ${{ steps.resolve.outputs.gradle-version }}
+  gradle-distribution-url:
+    description: >
+      Download URL of that Gradle release, to write into
+      gradle/wrapper/gradle-wrapper.properties before running the wrapper.
+    value: ${{ steps.resolve.outputs.gradle-distribution-url }}
 runs:
   using: 'composite'
   steps:
@@ -74,6 +90,64 @@ runs:
         curl -Lo ghidra.zip "$URL"
         unzip -q ghidra.zip
         mv ghidra_* ghidra_install
+
+        # support/buildExtension.gradle compiles an extension at the source
+        # level application.java.compiler names, so the JDK Gradle runs on must
+        # be at least that version. The level is per release: Ghidra 12.1.2
+        # names 21 and Ghidra 12.2 names 25, so a caller that pins one JDK
+        # fails on every release that moved past it.
+        JAVA_VERSION=$(sed -n 's/^application\.java\.compiler=//p' \
+          ghidra_install/Ghidra/application.properties)
+        if [ -z "$JAVA_VERSION" ]; then
+          echo "::error::Ghidra ${VERSION} names no application.java.compiler in Ghidra/application.properties"
+          exit 1
+        fi
+        echo "Compiles extensions at Java \`$JAVA_VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+
+        # The Gradle version follows the same route: Ghidra names the range it
+        # accepts in application.gradle.min and application.gradle.max, and
+        # buildExtension.gradle refuses to run outside it. Resolving the newest
+        # release in that range here keeps the committed wrapper from having to
+        # be edited whenever a Ghidra release raises its minimum.
+        GRADLE_MIN=$(sed -n 's/^application\.gradle\.min=//p' \
+          ghidra_install/Ghidra/application.properties)
+        GRADLE_MAX=$(sed -n 's/^application\.gradle\.max=//p' \
+          ghidra_install/Ghidra/application.properties)
+        if [ -z "$GRADLE_MIN" ]; then
+          echo "::error::Ghidra ${VERSION} names no application.gradle.min in Ghidra/application.properties"
+          exit 1
+        fi
+
+        if ! GRADLE_VERSIONS=$(curl -sSf https://services.gradle.org/versions/all); then
+          echo "::error::Could not reach the Gradle versions API"
+          exit 1
+        fi
+
+        # final excludes release candidates, milestones and nightlies, so the
+        # choice is the newest released Gradle the range allows.
+        GRADLE_RESOLVED=$(echo "$GRADLE_VERSIONS" | jq -r \
+          --arg min "$GRADLE_MIN" --arg max "$GRADLE_MAX" '
+          def parts: split(".") | map(tonumber);
+          ($min | parts) as $minp
+          | (if $max == "" then null else ($max | parts) end) as $maxp
+          | [ .[]
+              | select(.final == true and .broken == false)
+              | select((.version | parts) as $v
+                       | $v >= $minp and ($maxp == null or $v <= $maxp)) ]
+          | sort_by(.version | parts)
+          | last
+          | if . == null then "" else "\(.version) \(.downloadUrl)" end')
+        if [ -z "$GRADLE_RESOLVED" ]; then
+          echo "::error::No final Gradle release satisfies Ghidra ${VERSION} (min ${GRADLE_MIN}, max ${GRADLE_MAX:-none})"
+          exit 1
+        fi
+        GRADLE_VERSION=${GRADLE_RESOLVED% *}
+        GRADLE_URL=${GRADLE_RESOLVED#* }
+        echo "Gradle \`$GRADLE_VERSION\` (Ghidra accepts ${GRADLE_MIN} to ${GRADLE_MAX:-any})" >> "$GITHUB_STEP_SUMMARY"
+
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "is-latest=$IS_LATEST" >> "$GITHUB_OUTPUT"
         echo "install-dir=$RUNNER_TEMP/ghidra_install" >> "$GITHUB_OUTPUT"
+        echo "java-version=$JAVA_VERSION" >> "$GITHUB_OUTPUT"
+        echo "gradle-version=$GRADLE_VERSION" >> "$GITHUB_OUTPUT"
+        echo "gradle-distribution-url=$GRADLE_URL" >> "$GITHUB_OUTPUT"
