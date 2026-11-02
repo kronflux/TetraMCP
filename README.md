@@ -1,4 +1,3 @@
-
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub Release (latest by date)](https://img.shields.io/github/v/release/kronflux/TetraMCP)](https://github.com/kronflux/TetraMCP/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/kronflux/TetraMCP)](https://github.com/kronflux/TetraMCP/stargazers)
@@ -8,88 +7,115 @@
 
 # TetraMCP for Ghidra
 
-TetraMCP is a unified [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [Ghidra](https://ghidra-sre.org/), providing AI agents with direct access to reverse engineering capabilities.
+TetraMCP is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)
+server embedded in [Ghidra](https://ghidra-sre.org/). It gives an MCP-capable AI
+client direct access to Ghidra's analysis, so the client works on a binary
+through the same APIs the user interface does.
 
-TetraMCP extends Ghidra's three core perspectives -- hex, disassembly, and debugging -- with a fourth: an LLM cognition layer delivered via MCP. The result is a single Ghidra extension that turns any MCP-compatible AI client into a reverse engineering assistant.
+Ghidra presents a binary through three perspectives: hex, disassembly and
+debugging. TetraMCP adds a fourth, an LLM cognition layer served over MCP, as a
+single extension with no bridge script and no second process.
 
 <p align="center">
 <img alt="TetraMCP" src="logo.png" />
 </p>
 
+## Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Client setup](#client-setup)
+- [Configuration](#configuration)
+- [Tool reference](#tool-reference)
+- [Architecture](#architecture)
+- [Building from source](#building-from-source)
+- [Changelog](#changelog)
+- [License](#license)
+
 ## Overview
 
-TetraMCP integrates several key components:
-
-1.  **Native MCP Server**: Runs directly inside Ghidra via an embedded Jetty server. No Python bridges or external processes are required; it communicates via Streamable HTTP.
-2.  **Comprehensive Tooling**: Exposes 120+ tools across 25 categories, covering everything from decompilation and memory analysis to P-code emulation and AI-enhanced renaming.
-3.  **AI Integration Layer**: Optional built-in support for LLMs (Anthropic, OpenAI, or compatible) to automate tasks like function explanation, variable renaming, and commenting directly within the analysis context.
-4.  **Multi-Program Architecture**: Supports simultaneous analysis of multiple open binaries with isolated state management.
-
-This architecture enables AI assistants to:
--   Decompile, disassemble, and analyze binary code with low-level precision.
--   Perform cryptographic constant detection and signature matching.
--   Utilize P-code emulation for dynamic behavior inspection.
--   Collaborate on complex reversing tasks using a shared context model for multi-agent systems.
--   Automate tedious renaming and documentation tasks via integrated AI.
+- **Native MCP server.** An embedded Jetty server speaks Streamable HTTP from
+  inside the Ghidra JVM. No Python bridge and no external process take part, so
+  a tool call reaches Ghidra's API without a serialisation boundary.
+- **Broad tool surface.** Over 140 tools in 29 namespaces, covering
+  decompilation, memory and data, control and data flow, emulation,
+  cryptographic constant detection, patching and external tooling.
+- **Optional AI layer.** With a provider configured, the server can explain a
+  function, comment decompiled code and propose names, using the analysis
+  context it already holds.
+- **Several programs at once.** Each open program keeps its own state, so an
+  agent can work across binaries in one session.
+- **Multi-agent support.** Findings and a task queue are shared per program, so
+  two agents working one binary read each other's results.
 
 ## Features
 
-TetraMCP provides a comprehensive set of reverse engineering capabilities organized into logical categories:
+### Program analysis
 
-### Advanced Program Analysis
--   **Decompilation & Disassembly**: High-fidelity C decompilation and assembly listings with pagination support for large functions.
--   **Control Flow**: Generate control flow graphs (CFG) and call graphs to understand program logic.
--   **Data Flow**: Perform forward/backward data flow tracing via P-code SSA.
--   **Cross-References**: Query references to and from addresses, functions, and data symbols.
+- Decompilation to C and assembly listings, both paginated so a large function
+  answers within a client's message budget.
+- Control flow and call graphs.
+- Forward and backward data flow tracing over p-code SSA.
+- Cross-references to and from addresses, functions and data.
 
-### AI-Enhanced Capabilities
--   **Automated Renaming**: Leverage LLMs to suggest meaningful names for functions and variables based on context.
--   **Code Explanation**: Generate function summaries and save them directly as plate comments.
--   **Line-by-Line Annotation**: Add detailed comments to decompiled code automatically.
--   **Log-Based Analysis**: Recover function names automatically from debug logging calls.
+### AI-assisted analysis
 
-### Extensive Tooling
--   **Cryptographic Detection**: Scan for known constants (AES, SHA, MD5, etc.) using an embedded signature database.
--   **P-code Emulation**: Step through code, inspect registers, and modify memory state.
--   **External Tools**: Integration with `binwalk`, `YARA`, and specialized Go binary analysis.
--   **Multi-Agent Collaboration**: Shared findings, task queues, and progress tracking for complex workflows.
+- Name suggestions for functions and variables, derived from the surrounding
+  code.
+- Function summaries, saved as plate comments.
+- Line-by-line annotation of decompiled output.
+- Function names recovered from the format strings a binary passes to its own
+  logging calls.
 
-# Installation
+### Tooling
 
-## Prerequisites
--   [Ghidra](https://ghidra-sre.org/) (Version 12.0.4 or later)
--   The JDK the Ghidra release requires: 21 for Ghidra 12.0.4 through 12.1.2, 25 for Ghidra 12.2
+- Cryptographic constant detection against an embedded signature database, such
+  as the AES S-box and the SHA initialisation vectors.
+- P-code emulation: step execution, inspect registers, modify memory.
+- `binwalk`, YARA and Go binary analysis driven as child processes.
+- Cython and CPython structure recovery, including the interpreter version a
+  module was built against.
+- Library function identification through Ghidra's FunctionID, documented in
+  [docs/FunctionID.md](docs/FunctionID.md).
+- Long analyses run as background jobs that report progress and can be
+  cancelled.
 
-## Ghidra Plugin Installation
+## Requirements
 
-First, download the latest release ZIP or build from source (see below). Then, add the plugin to Ghidra:
+| To | You need |
+|---|---|
+| Run a published release | Ghidra, plus the JDK that Ghidra release requires. Take the TetraMCP release whose name matches your Ghidra version: Ghidra refuses an extension built for a different release. |
+| Build from source | A Ghidra installation and the JDK named by `application.java.compiler` in its `Ghidra/application.properties`. That is 21 for Ghidra 12.1.2 and earlier, and 25 for Ghidra 12.2. |
 
-1.  Run Ghidra
-2.  Select `File` -> `Install Extensions`
-3.  Click the `+` button
-4.  Select the `TetraMCP-[version].zip` file
-5.  Restart Ghidra
-6.  Open a binary in CodeBrowser
-7.  Navigate to `File` -> `Configure` (plug icon) -> `Developer`
-8.  Check **TetraMcpPlugin** to enable it
+## Installation
 
-**TetraMcpPlugin is the only plugin you need to enable.** There is no companion
-plugin to hunt for. TetraMCP learns that a program has closed from Ghidra
-itself, by subscribing to the program's own close notification, so releasing a
-closed program's cached decompilations and its native decompiler processes does
-not depend on any second plugin being switched on.
+1. Download the release ZIP for your Ghidra version from the
+   [Releases](https://github.com/kronflux/TetraMCP/releases) page, or build from
+   source as described below.
+2. Start Ghidra and select `File` -> `Install Extensions`.
+3. Click `+`, select the ZIP, and restart Ghidra.
+4. Open a binary in CodeBrowser.
+5. Select `File` -> `Configure` -> `Developer` and enable **TetraMcpPlugin**.
 
-> **Note:** The MCP server starts automatically on `http://localhost:18489/mcp`. You can customize the host and port in Ghidra under `Edit` -> `Tool Options` -> `TetraMCP`.
+`TetraMcpPlugin` is the only plugin to enable. There is no companion plugin:
+TetraMCP learns that a program has closed from Ghidra itself, by subscribing to
+that program's own close notification, so releasing its cached decompilations
+and native decompiler processes does not depend on a second plugin being on.
 
-# Client Setup
+The server starts automatically on `http://localhost:18489/mcp`. The host and
+port are tool options, described under [Configuration](#configuration).
 
-TetraMCP works with any MCP-compatible client that supports **Streamable HTTP transport**.
+## Client setup
 
-### Claude Desktop Configuration
+Any MCP client that supports Streamable HTTP transport can connect.
 
-Add the following to your `claude_desktop_config.json`:
--   **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
--   **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+### Claude Desktop
+
+Add the server to `claude_desktop_config.json`, which lives at
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS and
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows:
 
 ```json
 {
@@ -102,17 +128,15 @@ Add the following to your `claude_desktop_config.json`:
 }
 ```
 
-### Claude Code Configuration
-
-Run the following command to add the server:
+### Claude Code
 
 ```bash
 claude mcp add tetramcp --transport http http://localhost:18489/mcp
 ```
 
-### Cursor Configuration
+### Cursor
 
-Create or edit `.cursor/mcp.json` in your project root:
+Create or edit `.cursor/mcp.json` in the project root:
 
 ```json
 {
@@ -124,164 +148,150 @@ Create or edit `.cursor/mcp.json` in your project root:
 }
 ```
 
-## API Reference
+## Configuration
 
-TetraMCP organizes 120+ tools into logical namespaces.
+Settings live in Ghidra under `Edit` -> `Tool Options`.
 
-### Program and Instance Management
--   `program_info`: Program metadata (name, architecture, compiler, hashes).
--   `instances_list`: List open programs.
--   `instances_use`: Switch active program context.
+### Server (TetraMCP)
 
-### Function Analysis
--   `functions_decompile`: Decompile to C with pagination.
--   `functions_disassemble`: Assembly listing.
--   `functions_rename`: Rename functions.
--   `functions_find_undefined`: Discover undefined code.
-
-### Memory and Data
--   `memory_read`: Hex dump with ASCII.
--   `memory_search_bytes`: Pattern search with wildcards.
--   `data_list_strings`: List strings with regex filtering.
--   `structs_create` / `structs_update_field`: Manage data structures.
-
-### Analysis and AI
--   `analysis_callgraph`: Generate call graphs.
--   `analysis_cfg`: Control flow graphs.
--   `ai_suggest_renames`: LLM-powered renaming suggestions.
--   `ai_explain_function`: Auto-generate function summaries.
-
-### Emulation
--   `emulation_create`: Start a P-code emulator.
--   `emulation_step`: Step execution.
--   `emulation_get_state`: Inspect registers and memory.
-
-### Multi-Agent
--   `agents_add_finding`: Record analysis findings.
--   `agents_get_next_task`: Coordinate workflow tasks.
-
-## Example Session
-
-Below is an example of how an AI assistant might interact with Ghidra using TetraMCP:
-
-**User:**
-```
-Find the main function, explain what it does, and check for any cryptographic constants.
-```
-
-**Assistant:**
-```
-I'll start by locating the main function and analyzing it.
-
-[Uses functions_list with filter "main"]
-Found 'main' at address 0x00401000.
-
-[Uses functions_decompile for 'main']
-Retrieved decompiled code. The function initializes a socket and encrypts data before sending.
-
-[Uses ai_explain_function for 'main']
-LLM Explanation: This function serves as the entry point for the network handler. It allocates a buffer, initializes a cryptographic context, and enters a loop to process incoming data packets.
-
-[Uses crypto_scan on the current program]
-Cryptographic constants detected:
-- AES S-Box at 0x00402000
-- SHA-256 IV at 0x00402100
-
-I have added a plate comment to 'main' with the generated explanation and identified the crypto constants used.
-```
-
-**User:**
-```
-Rename the buffer variable in main to 'packet_buffer' and check cross-references to the AES S-Box.
-```
-
-**Assistant:**
-```
-[Uses variables_rename in function 'main' old_name 'buffer' new_name 'packet_buffer']
-Variable renamed successfully.
-
-[Uses xrefs_to address 0x00402000]
-Found 2 references to the AES S-Box:
-- encrypt_data (0x00401150)
-- decrypt_data (0x00401230)
-
-The cryptographic functions have been identified. Would you like me to analyze the 'encrypt_data' function next?
-```
-
-# Configuration
-
-Server and AI settings are configured in Ghidra under **Edit > Tool Options**.
-
-### Server Settings (TetraMCP)
 | Setting | Default | Description |
-|---------|---------|-------------|
+|---|---|---|
 | Server Host | `127.0.0.1` | Bind address |
 | Server Port | `18489` | HTTP port |
 
-### AI Settings (TetraMCP.AI)
+### AI (TetraMCP.AI)
+
 | Setting | Default | Description |
-|---------|---------|-------------|
+|---|---|---|
 | AI Enabled | `false` | Enable AI-assisted analysis |
 | AI Provider | `anthropic` | `anthropic` or `openai` |
 | AI Model | `claude-sonnet-4-6` | Model name |
 
-**Local Models (Ollama example):** Set Provider to `openai`, API URL to `http://localhost:11434/v1/chat/completions`, leave API Key empty, and set Model to your model name.
+For a local model through Ollama, set the provider to `openai`, the API URL to
+`http://localhost:11434/v1/chat/completions`, the model to your model's name,
+and leave the API key empty.
 
-# Architecture
+## Tool reference
 
-TetraMCP runs as a single Java codebase inside the Ghidra JVM, eliminating the need for bridge scripts or serialization boundaries.
+The authoritative list is what the server answers to `tools/list`; a client
+shows it on connection. The namespaces are `agents`, `ai`, `analysis`, `batch`,
+`bookmarks`, `classes`, `comments`, `constants`, `crypto`, `cython`, `data`,
+`datatypes`, `emulation`, `equates`, `fid`, `function`, `functions`,
+`instances`, `jobs`, `memory`, `namespaces`, `program`, `project`, `scripts`,
+`structs`, `symbols`, `ui`, `variables` and `xrefs`.
+
+A selection, to show the shape:
+
+| Tool | Answers |
+|---|---|
+| `program_info` | Program metadata: name, architecture, compiler, hashes |
+| `instances_list`, `instances_use` | List open programs, switch the active one |
+| `functions_decompile` | Decompiled C for one function, paginated |
+| `functions_disassemble` | Assembly listing for one function, paginated |
+| `functions_rename` | Rename a function |
+| `memory_read` | Hex dump with ASCII |
+| `memory_search_bytes` | Byte pattern search, wildcards allowed |
+| `data_list_strings` | Strings, filtered by regular expression |
+| `structs_create`, `structs_update_field` | Define and amend data structures |
+| `analysis_callgraph`, `analysis_cfg` | Call graph, control flow graph |
+| `xrefs_to`, `xrefs_from` | References to and from an address |
+| `crypto_scan` | Known cryptographic constants in the program |
+| `emulation_create`, `emulation_step`, `emulation_get_state` | Drive and inspect a p-code emulator |
+| `fid_identify` | Match functions against attached FunctionID databases |
+| `ai_explain_function`, `ai_suggest_renames` | LLM explanation and name proposals |
+| `agents_add_finding`, `agents_get_next_task` | Record a finding, claim queued work |
+| `jobs_list`, `jobs_result`, `jobs_cancel` | Observe and control background jobs |
+
+### Example exchange
+
+A client asked to find and explain an entry point, then check for cryptographic
+constants, makes a sequence of calls like this:
 
 ```
-MCP Client (Claude, Cursor, etc.)
-    |
-    | Streamable HTTP (:18489/mcp)
-    |
-Jetty 12 (embedded HTTP server)
+functions_list    filter "main"          -> main at 0x00401000
+functions_decompile  main                -> decompiled body
+ai_explain_function  main                -> summary, saved as a plate comment
+crypto_scan                              -> AES S-box at 0x00402000
+                                            SHA-256 IV at 0x00402100
+xrefs_to  0x00402000                     -> encrypt_data, decrypt_data
+```
+
+## Architecture
+
+TetraMCP is one Java codebase running inside the Ghidra JVM.
+
+```
+MCP client (Claude, Cursor, ...)
+    |  Streamable HTTP on :18489/mcp
+Jetty 12, embedded
     |
 MCP Java SDK
     |
-Tool Providers (27 providers, 120+ tools)
+Tool providers
     |
-Ghidra APIs (FlatProgramAPI, DecompInterface, etc.)
+Ghidra APIs (FlatProgramAPI, DecompInterface, ...)
 ```
 
-## Extending with Custom Tools
+Tool calls run on a bounded pool TetraMCP owns, and writes to one program are
+serialised by that program's own lock. Long work is handed to the job executor,
+which reports progress on the session that started it.
 
-Implement `TetraMcpModule` and register via Java's `ServiceLoader`:
+### Adding tools from another extension
+
+Implement `TetraMcpModule` and register it through Java's `ServiceLoader`. The
+server holds a module's tools to the same rules as its own: names must not
+collide, schemas must be ones the MCP server accepts, and a throw from a module
+costs that module rather than the server.
 
 ```java
 public class MyModule implements TetraMcpModule {
-    public String getName() { return "MyTools"; }
-    public List<ToolSpecification> getToolSpecifications(McpServerManager mgr) {
-        // Return tool definitions
+    public String getName() {
+        return "MyTools";
+    }
+
+    public List<ToolSpecification> getToolSpecifications(McpServerManager manager) {
+        // Return the tool definitions this module adds.
     }
 }
 ```
 
-# Building from Source
+## Building from source
 
-**Requirements:** Ghidra 12.2 or later, and a JDK of the version that release
-names as `application.java.compiler` in `Ghidra/application.properties`, which is
-25 for Ghidra 12.2. The build compiles at that level and fails on an older JDK.
-
-The source calls the FunctionID and task monitor APIs as Ghidra 12.2 declares
-them, and those signatures differ in 12.1.2 and earlier. To build for an older
-Ghidra, check out the `ghidra-<version>` tag that names it, or take that
-version's release artifact.
+The build takes its Java compile level, its Gradle version and its dependency
+versions from the Ghidra release that is installed, so there is nothing to pin
+by hand. Point `GHIDRA_INSTALL_DIR` at that installation:
 
 ```bash
 export GHIDRA_INSTALL_DIR=/path/to/ghidra
 ./gradlew buildExtension
 ```
 
-The extension ZIP is created in `dist/`.
+The extension ZIP is written to `dist/`.
 
-# License
+The source calls the FunctionID and task monitor APIs as Ghidra 12.2 declares
+them, and those signatures differ in Ghidra 12.1.2 and earlier. To build for an
+older Ghidra, check out the `ghidra-<version>` tag that names it, or take that
+version's release artifact.
+
+### Checks
+
+| Command | Covers |
+|---|---|
+| `./gradlew test` | Unit tests; no Ghidra installation needed at run time |
+| `./gradlew integrationTest` | The server and its tools against a real Ghidra installation; needs a display, so use `xvfb-run` on a headless machine |
+| `./gradlew verifyPackaging` | That the built ZIP carries the runtime artifacts and nothing else |
+
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) records what changed, in a section per Ghidra
+release, with a link to that Ghidra release's own notes.
+
+## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for the full text.
 
-# Acknowledgments
+## Acknowledgments
 
--   [Ghidra](https://ghidra-sre.org/) by the National Security Agency
--   [Model Context Protocol](https://modelcontextprotocol.io/) specification
--   [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk)
+- [Ghidra](https://ghidra-sre.org/) by the National Security Agency
+- The [Model Context Protocol](https://modelcontextprotocol.io/) specification
+- The [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk)
